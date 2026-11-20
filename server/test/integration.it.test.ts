@@ -131,6 +131,53 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     await app.close();
   });
 
+  it('PR list: cost_usd = sum of run costs, null when none known', async () => {
+    const pr = (number: number) => ({
+      number,
+      title: `PR ${number}`,
+      author: 'a',
+      branch: `b${number}`,
+      base: 'main',
+      head_sha: `sha${number}`,
+      additions: 1,
+      deletions: 0,
+      files_count: 1,
+      status: 'open' as const,
+    });
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: {
+        git: new MockGitClient(),
+        github: new MockGitHubClient({ pulls: [pr(901), pr(902)] }),
+      },
+    });
+    const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
+    const imported = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const paid = imported.find((p: { number: number }) => p.number === 901)!;
+    const unpaid = imported.find((p: { number: number }) => p.number === 902)!;
+    const [{ workspaceId }] = await pg.handle.db
+      .select({ workspaceId: t.pullRequests.workspaceId })
+      .from(t.pullRequests)
+      .where(eq(t.pullRequests.id, paid.id));
+
+    await pg.handle.db.insert(t.agentRuns).values([
+      { workspaceId, prId: paid.id, status: 'done', costUsd: 0.001 },
+      { workspaceId, prId: paid.id, status: 'done', costUsd: 0.0023 },
+      { workspaceId, prId: paid.id, status: 'failed', costUsd: null },
+      { workspaceId, prId: unpaid.id, status: 'failed', costUsd: null },
+    ]);
+
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const paidRow = list.find((p: { number: number }) => p.number === 901)!;
+    const unpaidRow = list.find((p: { number: number }) => p.number === 902)!;
+    expect(typeof paidRow.cost_usd).toBe('number');
+    expect(paidRow.cost_usd).toBeCloseTo(0.0033, 10);
+    expect(unpaidRow.cost_usd).toBeNull();
+    await app.close();
+  });
+
   it('POST /repos/:id/poll syncs PR list and does NOT trigger a review', async () => {
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const app = await buildApp({
