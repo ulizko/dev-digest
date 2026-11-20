@@ -1,6 +1,6 @@
 # M1 — Run Cost Badge
 
-Status: draft
+Status: done
 
 Крос-пакетна фіча (server + client). Spec лежить у `server/`, бо сервер володіє
 даними й канонічними Zod-контрактами.
