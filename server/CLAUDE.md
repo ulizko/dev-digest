@@ -33,4 +33,4 @@ src/vendor/shared contracts · test/ all tests (not colocated)
 ## Read when
 - Touching repo-intel → read `src/modules/repo-intel/README.md`
 - Designing a feature → check `specs/`; deep dives → `docs/`
-- Something behaves oddly → read `INSIGHTS.md`
+- Before starting work here → read `INSIGHTS.md`

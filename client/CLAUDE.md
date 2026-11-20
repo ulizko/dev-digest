@@ -28,5 +28,5 @@ src/vendor/shared contracts · messages/en/*.json i18n strings
 - Adding a route or page → read `README.md` (route map)
 - Using or extending UI primitives → read `src/vendor/ui/README.md`
 - Designing a feature → check `specs/`; deep dives → `docs/`
-- Something behaves oddly → read `INSIGHTS.md`
+- Before starting work here → read `INSIGHTS.md`
 - Real browser journeys → `../e2e/CLAUDE.md`

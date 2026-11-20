@@ -28,4 +28,4 @@ src/output CI payload · src/index.ts public API · test/ all tests
 - Changing prompt structure or the run flow → read `README.md` and
   `../docs/architecture/review-workflow.md`
 - Designing a feature → check `specs/`; deep dives → `docs/`
-- Something behaves oddly → read `INSIGHTS.md`
+- Before starting work here → read `INSIGHTS.md`

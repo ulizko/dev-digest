@@ -30,4 +30,4 @@ docs/specs/ feature design specs (NOT `specs/`, which holds flows)
 - Writing or changing a flow → read `README.md`
 - Changing the hermetic stack → read `../scripts/e2e.sh`
 - Designing a feature → check `docs/specs/`; deep dives → `docs/`
-- Something behaves oddly → read `INSIGHTS.md`
+- Before starting work here → read `INSIGHTS.md`
