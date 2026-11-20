@@ -15,6 +15,9 @@ import {
   Settings,
   Repo,
   PrDetail,
+  PrMeta,
+  RunStats,
+  RunSummary,
 } from '@devdigest/shared';
 
 /**
@@ -206,5 +209,45 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+
+  it('run cost fields: RunSummary / RunStats / PrMeta carry cost_usd', () => {
+    const summary = {
+      run_id: 'r1',
+      agent_id: null,
+      agent_name: 'Sec',
+      provider: 'openrouter',
+      model: 'deepseek/deepseek-v4-flash',
+      status: 'done',
+      error: null,
+      duration_ms: 1000,
+      tokens_in: 9000,
+      tokens_out: 119,
+      findings_count: 0,
+      grounding: '0/0 passed',
+      ran_at: null,
+      score: 90,
+      blockers: 0,
+    };
+    expect(RunSummary.parse({ ...summary, cost_usd: 0.0013 }).cost_usd).toBe(0.0013);
+    expect(RunSummary.parse({ ...summary, cost_usd: null }).cost_usd).toBeNull();
+
+    const stats = { duration_ms: 1, tokens_in: 1, tokens_out: 1, findings: 0, grounding: '0/0 passed' };
+    expect(RunStats.parse(stats).cost_usd).toBeUndefined();
+    expect(RunStats.parse({ ...stats, cost_usd: 0.06 }).cost_usd).toBe(0.06);
+
+    const pr = {
+      number: 482,
+      title: 't',
+      author: 'a',
+      branch: 'b',
+      base: 'main',
+      head_sha: 'sha',
+      additions: 1,
+      deletions: 0,
+      files_count: 1,
+      status: 'needs_review',
+    };
+    expect(PrMeta.parse({ ...pr, cost_usd: 0.014 }).cost_usd).toBe(0.014);
   });
 });
