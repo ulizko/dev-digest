@@ -4,12 +4,26 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
+import { Icon, Avatar, Badge, CircularScore, SeverityCount } from "@devdigest/ui";
+import type { SeverityCounts } from "@devdigest/shared";
 import type { PrMeta } from "@/lib/types";
-import { SIZE_COLOR, STATUS_META } from "../../constants";
+import { SEVERITY_COUNT_KEYS, SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { formatCost } from "@/lib/format-cost";
 import { s } from "../../styles";
+
+function FindingsCounts({ counts }: { counts: SeverityCounts | null | undefined }) {
+  if (!counts) return <span style={s.muted}>—</span>;
+  const present = SEVERITY_COUNT_KEYS.filter(([, key]) => counts[key] > 0);
+  if (present.length === 0) return <span style={s.muted}>0</span>;
+  return (
+    <>
+      {present.map(([sev, key]) => (
+        <SeverityCount key={sev} severity={sev} count={counts[key]} />
+      ))}
+    </>
+  );
+}
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const t = useTranslations("prReview");
@@ -53,6 +67,9 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
         ) : (
           <span style={s.muted}>—</span>
         )}
+      </div>
+      <div style={s.findingsCell}>
+        <FindingsCounts counts={pr.severity_counts} />
       </div>
       <div>
         <Badge dot color={st.c} bg="transparent">

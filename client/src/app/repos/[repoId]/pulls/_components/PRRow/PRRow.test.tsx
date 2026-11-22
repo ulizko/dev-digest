@@ -24,6 +24,8 @@ function pr(o: Partial<PrMeta>): PrMeta {
     status: "reviewed",
     updated_at: new Date().toISOString(),
     score: 80,
+    severity_counts: { critical: 0, warning: 0, suggestion: 0 },
+    latest_review_id: "rv1",
     ...o,
   };
 }
@@ -45,5 +47,25 @@ describe("PRRow — COST column", () => {
   it("shows — (not $0.00) when no run cost is known", () => {
     renderRow(pr({ cost_usd: null }));
     expect(screen.getAllByText("—")).toHaveLength(1);
+  });
+});
+
+describe("PRRow — FINDINGS column", () => {
+  it("shows a counter per non-empty severity of the latest review", () => {
+    renderRow(pr({ severity_counts: { critical: 2, warning: 0, suggestion: 4 } }));
+    expect(screen.getByRole("img", { name: "2 CRITICAL" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "4 SUGGESTION" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /WARNING/ })).toBeNull();
+  });
+
+  it("shows 0 for a reviewed PR without findings", () => {
+    renderRow(pr({ cost_usd: 0.01 }));
+    expect(screen.queryByRole("img", { name: /CRITICAL|WARNING|SUGGESTION/ })).toBeNull();
+    expect(screen.getByText("0")).toBeInTheDocument();
+  });
+
+  it("shows — for a PR that was never reviewed", () => {
+    renderRow(pr({ score: null, severity_counts: null, latest_review_id: null, cost_usd: 0.01 }));
+    expect(screen.getAllByText("—")).toHaveLength(2);
   });
 });
