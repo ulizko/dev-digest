@@ -16,4 +16,7 @@ Append-only — written via the engineering-insights skill.
 
 ## Session Notes
 
+### 2026-11-22
+- M2 severity counters: run filter in `FindingsPanel`, FINDINGS column + `FindingsPopover` in the PR list, `SeverityCount` in `@devdigest/ui`; the shared runtime-import build break was caught only in the running app.
+
 ## Open Questions

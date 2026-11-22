@@ -12,6 +12,8 @@ Append-only — written via the engineering-insights skill.
 
 - 2026-11-20 — A run's persisted log is snapshotted when the trace object is built (`log: runLog.logFor(runId)`); anything logged after that, incl. `Run complete; trace persisted`, only reaches live SSE, not the trace — emit lines meant for the log tab before building the trace (`src/modules/reviews/run-executor.ts:287`)
 
+- 2026-11-22 — "Run all enabled agents" writes one `reviews` row per agent as each finishes, so "the PR's latest review" is just the last agent to finish and hides the others' findings (PR #2296 showed 0 FINDINGS / SCORE 100 while another agent had a CRITICAL / 62); aggregate PR-level numbers over the latest review per `(pr_id, agent_id)` instead (`src/modules/pulls/routes.ts:129`)
+
 ## Tool & Library Notes
 
 - 2026-11-20 — Drizzle `sum()` returns `string | null` (Postgres numeric), not a number — convert with `Number()` before putting it in a `z.number()` contract, and assert `typeof === 'number'` in the it-test (`src/modules/pulls/routes.ts:140`)
@@ -26,5 +28,8 @@ Append-only — written via the engineering-insights skill.
 
 ### 2026-11-20
 - M1 Run Cost Badge shipped (`specs/M1-run-cost.md`): per-run `agent_runs.cost_usd`, per-PR SUM in the PR list; verified against the OpenRouter dashboard on one real run.
+
+### 2026-11-22
+- M2 severity counters shipped (`specs/M2-severity-counters.md`): PR list `severity_counts`/`review_ids`, SCORE = min over each agent's latest review, index on `findings(review_id)`.
 
 ## Open Questions
