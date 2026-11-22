@@ -110,4 +110,55 @@ describe("FindingsPanel severity filter", () => {
     expect(screen.getByRole("button", { name: "2 WARNING" })).toBeInTheDocument();
     expect(titles()).toHaveLength(4);
   });
+
+  it("keeps only findings that pass both the severity filter and Hide low confidence", () => {
+    renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByRole("button", { name: "2 WARNING" }));
+    expect(titles()).toEqual(["WARNING w1", "WARNING w2"]);
+  });
+
+  it("highlights only the active level, dims the others, and moves the highlight on another click", () => {
+    renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
+    const critical = screen.getByRole("button", { name: "1 CRITICAL" });
+    const warning = screen.getByRole("button", { name: "3 WARNING" });
+    const suggestion = screen.getByRole("button", { name: "1 SUGGESTION" });
+
+    fireEvent.click(warning);
+    fireEvent.click(critical);
+    expect(critical).toHaveAttribute("aria-pressed", "true");
+    expect(warning).toHaveAttribute("aria-pressed", "false");
+    expect(critical).toHaveStyle({ opacity: "1" });
+    expect(warning).toHaveStyle({ opacity: "0.4" });
+    expect(suggestion).toHaveStyle({ opacity: "0.4" });
+    expect(titles()).toEqual(["CRITICAL c1"]);
+
+    fireEvent.click(critical);
+    for (const btn of [critical, warning, suggestion]) {
+      expect(btn).toHaveAttribute("aria-pressed", "false");
+      expect(btn).toHaveStyle({ opacity: "1" });
+    }
+  });
+
+  it("shows the existing empty state when the filtered level has no findings", () => {
+    renderWithIntl(<FindingsPanel findings={[finding("c1", "CRITICAL")]} prId="pr1" />);
+    fireEvent.click(screen.getByRole("button", { name: "0 SUGGESTION" }));
+    expect(screen.getByText("No findings match")).toBeInTheDocument();
+  });
+
+  it("keeps counters matching the list when findings are refetched after accept/dismiss", () => {
+    const { rerender } = renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
+    fireEvent.click(screen.getByRole("button", { name: "3 WARNING" }));
+
+    const refetched = MIXED.filter((f) => f.id !== "w2").map((f) =>
+      f.id === "w1" ? { ...f, dismissed_at: "2026-11-22T00:00:00Z" } : f,
+    );
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <FindingsPanel findings={refetched} prId="pr1" />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByRole("button", { name: "2 WARNING" })).toHaveAttribute("aria-pressed", "true");
+    expect(titles()).toEqual(["WARNING w1", "WARNING w3"]);
+  });
 });

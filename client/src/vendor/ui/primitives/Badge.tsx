@@ -87,21 +87,24 @@ export function SeverityBadge({
   );
 }
 
-/** Compact severity tally — icon + number; the full "3 CRITICAL" lives in aria-label/title. */
+/** Compact severity tally — icon + number; the caller's localized `label` ("3 CRITICAL") is the aria-label/title. */
 export function SeverityCount({
   severity,
   count,
+  label,
   active,
+  dimmed,
   onClick,
 }: {
   severity: Severity;
   count: number;
+  label: string;
   active?: boolean;
+  dimmed?: boolean;
   onClick?: () => void;
 }) {
   const s = SEV[severity];
   const I = Icon[s.icon];
-  const label = `${count} ${severity}`;
   const style: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -112,6 +115,7 @@ export function SeverityCount({
     borderRadius: 4,
     background: active ? s.bg : "transparent",
     color: s.c,
+    opacity: dimmed ? 0.4 : 1,
     font: "inherit",
     fontSize: 12.5,
     fontWeight: 600,

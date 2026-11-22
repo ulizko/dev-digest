@@ -1,5 +1,4 @@
 import type { PrMeta } from "../../../../lib/types";
-import type { Severity, SeverityCounts } from "@devdigest/shared";
 
 /** Constants for the PR list page (/repos/:repoId/pulls). */
 
@@ -26,13 +25,6 @@ export const SIZE_COLOR: Record<string, string> = {
 
 /** Grid template for both the header row and PR rows. */
 export const GRID = "1fr 132px 92px 60px 110px 118px 78px 78px";
-
-/** FINDINGS column: display severity → its key in PrMeta.severity_counts. */
-export const SEVERITY_COUNT_KEYS = [
-  ["CRITICAL", "critical"],
-  ["WARNING", "warning"],
-  ["SUGGESTION", "suggestion"],
-] as const satisfies readonly (readonly [Severity, keyof SeverityCounts])[];
 
 /** Line-count thresholds for the S/M/L size bucket. */
 export const SIZE_SMALL_MAX = 100;

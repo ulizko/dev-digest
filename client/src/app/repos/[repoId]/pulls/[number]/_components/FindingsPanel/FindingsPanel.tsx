@@ -8,7 +8,7 @@ import { Toggle, EmptyState, SeverityCount } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { KEY_TO_ACTION, SEVERITIES } from "./constants";
+import { KEY_TO_ACTION, SEVERITIES, SEVERITY_KEY } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
 
@@ -64,7 +64,9 @@ export function FindingsPanel({
               key={sev}
               severity={sev}
               count={countOf(sev)}
+              label={t(`severityCount.${SEVERITY_KEY[sev]}`, { count: countOf(sev) })}
               active={severity === sev}
+              dimmed={severity !== null && severity !== sev}
               onClick={() => filterBy(severity === sev ? null : sev)}
             />
           ))}

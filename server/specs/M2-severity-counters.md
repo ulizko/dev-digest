@@ -145,12 +145,16 @@ Status: done
 `SeverityBadge`). Його використовують два екрани; додати в барел, README і
 `/showcase`.
 
-- Пропси: `severity`, `count`, `active?`, `onClick?`.
+- Пропси: `severity`, `count`, `label`, `active?`, `dimmed?`, `onClick?`.
 - З `onClick` рендериться `<button type="button" aria-pressed={active}>`, без
-  нього `<span>`.
+  нього `<span role="img">`.
 - Вигляд: іконка `SEV[sev].icon` і число кольором `SEV[sev].c`, пунктирне
-  підкреслення. Активний стан має фон `SEV[sev].bg`.
-- `aria-label` і `title` мають вигляд `"{count} {SEVERITY}"`.
+  підкреслення. Активний стан має фон `SEV[sev].bg`, `dimmed` дає
+  `opacity: 0.4`. Ефекту наведення курсора немає, тож стан фільтра видно й на
+  скріншоті.
+- `label` стає `aria-label` і `title`. Його передає споживач з i18n
+  (`prReview.severityCount.{critical,warning,suggestion}` =
+  `"{count} CRITICAL"` тощо), бо UI-кіт не залежить від next-intl.
 
 **Прогін, `FindingsPanel`:**
 
@@ -169,8 +173,10 @@ Status: done
   `Severity.options`. Клієнт може імпортувати з `@devdigest/shared` лише типи:
   імпорт значення тягне в бандл barrel з `./contracts/*.js`, які webpack у Next
   не резолвить (див. `client/src/lib/feature-models.ts`).
-- Повторний клік по активному рівню знімає фільтр. Поки фільтр увімкнений,
-  поруч видно кнопку **Show all**.
+- Активним буває лише один рівень: клік по іншому переносить виділення. Поки
+  фільтр увімкнений, два неактивні лічильники приглушені (`dimmed`).
+- Повторний клік по активному рівню знімає фільтр і виділення. Поки фільтр
+  увімкнений, поруч видно кнопку **Show all**.
 - Рівень з нулем теж клікабельний і показує наявний `EmptyState`.
 
 **Список PR, `PRRow`:**
@@ -213,6 +219,8 @@ Status: done
 
 **i18n (`messages/en/prReview.json`):**
 
+- `severityCount.critical|warning|suggestion = "{count} CRITICAL"` тощо
+  (підписи лічильників і в прогоні, і в списку PR)
 - `panel.showAll = "Show all"`
 - `panel.severityFilter = "Filter by severity"`
 - `list.columns.findings = "Findings"`

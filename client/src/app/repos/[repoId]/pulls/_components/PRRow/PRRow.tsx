@@ -7,24 +7,36 @@ import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, CircularScore, SeverityCount } from "@devdigest/ui";
 import type { SeverityCounts } from "@devdigest/shared";
 import type { PrMeta } from "@/lib/types";
-import { SEVERITY_COUNT_KEYS, SIZE_COLOR, STATUS_META } from "../../constants";
+import { SIZE_COLOR, STATUS_META } from "../../constants";
+import { SEVERITIES, SEVERITY_KEY } from "../../[number]/_components/FindingsPanel/constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { formatCost } from "@/lib/format-cost";
 import { FindingsPopover } from "../FindingsPopover";
 import { s } from "../../styles";
 
 function FindingsCounts({ pr }: { pr: PrMeta }) {
+  const t = useTranslations("prReview");
   const counts: SeverityCounts | null | undefined = pr.severity_counts;
   if (!counts) return <span style={s.muted}>—</span>;
-  const present = SEVERITY_COUNT_KEYS.filter(([, key]) => counts[key] > 0);
+  const present = SEVERITIES.filter((sev) => counts[SEVERITY_KEY[sev]] > 0);
   if (present.length === 0) return <span style={s.muted}>0</span>;
-  const badges = present.map(([sev, key]) => <SeverityCount key={sev} severity={sev} count={counts[key]} />);
+  const badges = present.map((sev) => {
+    const count = counts[SEVERITY_KEY[sev]];
+    return (
+      <SeverityCount
+        key={sev}
+        severity={sev}
+        count={count}
+        label={t(`severityCount.${SEVERITY_KEY[sev]}`, { count })}
+      />
+    );
+  });
   if (!pr.id || !pr.review_ids) return <>{badges}</>;
   return (
     <FindingsPopover
       prId={pr.id}
       reviewIds={pr.review_ids}
-      count={present.reduce((sum, [, key]) => sum + counts[key], 0)}
+      count={present.reduce((sum, sev) => sum + counts[SEVERITY_KEY[sev]], 0)}
     >
       {badges}
     </FindingsPopover>

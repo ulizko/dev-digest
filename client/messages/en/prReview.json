@@ -26,6 +26,11 @@
     "blockers": " · {count} blockers",
     "prScore": "PR SCORE"
   },
+  "severityCount": {
+    "critical": "{count} CRITICAL",
+    "warning": "{count} WARNING",
+    "suggestion": "{count} SUGGESTION"
+  },
   "panel": {
     "hideLowConfidence": "Hide low confidence",
     "severityFilter": "Filter by severity",

@@ -93,9 +93,10 @@ export function Gallery() {
           <SeverityBadge key={sev} severity={sev} count={3} />
         ))}
         {SEVERITIES.map((sev) => (
-          <SeverityCount key={`count-${sev}`} severity={sev} count={2} />
+          <SeverityCount key={`count-${sev}`} severity={sev} count={2} label={`2 ${sev}`} />
         ))}
-        <SeverityCount severity="CRITICAL" count={1} active onClick={() => {}} />
+        <SeverityCount severity="CRITICAL" count={1} label="1 CRITICAL" active onClick={() => {}} />
+        <SeverityCount severity="WARNING" count={4} label="4 WARNING" dimmed onClick={() => {}} />
         <Badge icon="GitBranch">branch</Badge>
         <Badge dot color="var(--ok)" bg="transparent">
           synced
