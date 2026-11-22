@@ -19,6 +19,12 @@ src/vendor/shared contracts · messages/en/*.json i18n strings
 - User-facing strings go through `next-intl` (`useTranslations`) with keys in
   `messages/en/<namespace>.json`.
 - API types come from `@devdigest/shared`, not hand-written interfaces.
+- Import only types from `@devdigest/shared` (`import type`). A runtime value
+  (e.g. `Severity.options`) breaks the Next build while tsc and vitest still
+  pass; mirror values locally (see `INSIGHTS.md`). Check UI changes in the
+  running app, not only in vitest.
+- `@devdigest/ui` has no next-intl: a primitive that shows text takes it as a
+  prop, and the caller translates it (e.g. `SeverityCount`'s `label`).
 
 ## Do not touch
 - `src/vendor/shared` — a copy of `server/src/vendor/shared`; change it there and
