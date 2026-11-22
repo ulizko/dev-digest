@@ -15,6 +15,16 @@ export const s = {
     background: "var(--border)",
     margin: "0 2px",
   } satisfies CSSProperties,
+  severityGroup: { display: "flex", alignItems: "center", gap: 6 } satisfies CSSProperties,
+  showAll: {
+    background: "none",
+    border: "none",
+    padding: "2px 4px",
+    font: "inherit",
+    fontSize: 12.5,
+    color: "var(--accent-text)",
+    cursor: "pointer",
+  } satisfies CSSProperties,
   toggleGroup: {
     marginLeft: "auto",
     display: "flex",

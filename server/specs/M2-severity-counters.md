@@ -152,6 +152,11 @@ Status: accepted
 - Ліворуч у тулбарі стоять три `SeverityCount` з `onClick`, у порядку
   CRITICAL → WARNING → SUGGESTION, **включно з нулями**: критерій вимагає три
   рівні. Група має `role="group"` і `aria-label="Filter by severity"`.
+- Порядок рівнів задає локальна константа `SEVERITIES` у
+  `FindingsPanel/constants.ts` (`satisfies readonly Severity[]`), а не
+  `Severity.options`. Клієнт може імпортувати з `@devdigest/shared` лише типи:
+  імпорт значення тягне в бандл barrel з `./contracts/*.js`, які webpack у Next
+  не резолвить (див. `client/src/lib/feature-models.ts`).
 - Повторний клік по активному рівню знімає фільтр. Поки фільтр увімкнений,
   поруч видно кнопку **Show all**.
 - Рівень з нулем теж клікабельний і показує наявний `EmptyState`.

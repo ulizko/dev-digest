@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
@@ -51,5 +51,63 @@ describe("FindingsPanel (smoke)", () => {
   it("shows the empty state when nothing matches", () => {
     renderWithIntl(<FindingsPanel findings={[]} prId="pr1" />);
     expect(screen.getByText("No findings match")).toBeInTheDocument();
+  });
+});
+
+describe("FindingsPanel severity filter", () => {
+  const finding = (id: string, severity: FindingRecord["severity"], confidence = 0.9): FindingRecord => ({
+    ...FINDINGS[0]!,
+    id,
+    severity,
+    confidence,
+    title: `${severity} ${id}`,
+  });
+  const MIXED = [
+    finding("c1", "CRITICAL"),
+    finding("w1", "WARNING"),
+    finding("w2", "WARNING"),
+    finding("w3", "WARNING", 0.3),
+    finding("s1", "SUGGESTION"),
+  ];
+  const titles = () => screen.getAllByText(/^(CRITICAL|WARNING|SUGGESTION) \w+$/).map((el) => el.textContent);
+
+  it("shows a counter per severity, including empty levels", () => {
+    renderWithIntl(<FindingsPanel findings={[finding("w1", "WARNING")]} prId="pr1" />);
+    const group = screen.getByRole("group", { name: "Filter by severity" });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "0 CRITICAL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 WARNING" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "0 SUGGESTION" })).toBeInTheDocument();
+  });
+
+  it("filters the list to the clicked level and clears it on a second click", () => {
+    renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
+    const warning = screen.getByRole("button", { name: "3 WARNING" });
+
+    fireEvent.click(warning);
+    expect(warning).toHaveAttribute("aria-pressed", "true");
+    expect(titles()).toEqual(["WARNING w1", "WARNING w2", "WARNING w3"]);
+
+    fireEvent.click(warning);
+    expect(warning).toHaveAttribute("aria-pressed", "false");
+    expect(titles()).toHaveLength(5);
+  });
+
+  it("clears the filter with Show all", () => {
+    renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
+    expect(screen.queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "1 CRITICAL" }));
+    expect(titles()).toEqual(["CRITICAL c1"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(titles()).toHaveLength(5);
+    expect(screen.queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
+  });
+
+  it("keeps counters in sync with the list when low confidence is hidden", () => {
+    renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
+    fireEvent.click(screen.getByRole("switch"));
+    expect(screen.getByRole("button", { name: "2 WARNING" })).toBeInTheDocument();
+    expect(titles()).toHaveLength(4);
   });
 });
