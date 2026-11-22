@@ -111,34 +111,43 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest review per PR → the list's SCORE ring and FINDINGS breakdown.
-    // Computed on read from reviews (no FK denorm); the list is small, so
-    // IN-queries + JS grouping are cheap.
+    // Latest review of each agent per PR → the list's SCORE ring (minimum) and
+    // FINDINGS breakdown (sum). Computed on read from reviews (no FK denorm);
+    // the list is small, so IN-queries + JS grouping are cheap.
     const prIds = rows.map((r) => r.id);
-    const latestReviewByPr = new Map<string, { id: string; score: number | null }>();
+    const agentReviewsByPr = new Map<string, { id: string; score: number | null }[]>();
+    const prByReview = new Map<string, string>();
+    const seenAgents = new Set<string>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ id: t.reviews.id, prId: t.reviews.prId, score: t.reviews.score })
+        .select({ id: t.reviews.id, prId: t.reviews.prId, agentId: t.reviews.agentId, score: t.reviews.score })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt), desc(t.reviews.id));
-      // Rows are newest-first → first seen per PR is the latest review.
+      // Rows are newest-first → first seen per (PR, agent) is that agent's latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
+        const agentKey = `${rv.prId}:${rv.agentId ?? ''}`;
+        if (seenAgents.has(agentKey)) continue;
+        seenAgents.add(agentKey);
+        prByReview.set(rv.id, rv.prId);
+        const list = agentReviewsByPr.get(rv.prId) ?? [];
+        list.push({ id: rv.id, score: rv.score });
+        agentReviewsByPr.set(rv.prId, list);
       }
     }
 
-    const severitiesByReview = new Map<string, { severity: string }[]>();
-    const latestReviewIds = [...latestReviewByPr.values()].map((rv) => rv.id);
-    if (latestReviewIds.length > 0) {
+    const severitiesByPr = new Map<string, { severity: string }[]>();
+    const countedReviewIds = [...agentReviewsByPr.values()].flat().map((rv) => rv.id);
+    if (countedReviewIds.length > 0) {
       const findingRows = await container.db
         .select({ reviewId: t.findings.reviewId, severity: t.findings.severity })
         .from(t.findings)
-        .where(inArray(t.findings.reviewId, latestReviewIds));
+        .where(inArray(t.findings.reviewId, countedReviewIds));
       for (const f of findingRows) {
-        const list = severitiesByReview.get(f.reviewId) ?? [];
+        const prId = prByReview.get(f.reviewId)!;
+        const list = severitiesByPr.get(prId) ?? [];
         list.push(f);
-        severitiesByReview.set(f.reviewId, list);
+        severitiesByPr.set(prId, list);
       }
     }
 
@@ -156,7 +165,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     const now = Date.now();
     return rows.map((r) => {
-      const review = latestReviewByPr.get(r.id);
+      const reviews = agentReviewsByPr.get(r.id);
+      const scores = (reviews ?? []).flatMap((rv) => (rv.score == null ? [] : [rv.score]));
       return {
         id: r.id,
         number: r.number,
@@ -177,10 +187,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         }),
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
-        score: review ? review.score : null,
+        score: scores.length > 0 ? Math.min(...scores) : null,
         cost_usd: costByPr.get(r.id) ?? null,
-        severity_counts: review ? rollupSeverities(severitiesByReview.get(review.id) ?? []) : null,
-        latest_review_id: review ? review.id : null,
+        severity_counts: reviews ? rollupSeverities(severitiesByPr.get(r.id) ?? []) : null,
+        review_ids: reviews ? reviews.map((rv) => rv.id) : null,
       };
     });
   });

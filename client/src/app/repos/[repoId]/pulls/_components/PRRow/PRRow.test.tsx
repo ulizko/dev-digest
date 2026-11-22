@@ -25,7 +25,7 @@ function pr(o: Partial<PrMeta>): PrMeta {
     updated_at: new Date().toISOString(),
     score: 80,
     severity_counts: { critical: 0, warning: 0, suggestion: 0 },
-    latest_review_id: "rv1",
+    review_ids: ["rv1"],
     ...o,
   };
 }
@@ -65,7 +65,7 @@ describe("PRRow — FINDINGS column", () => {
   });
 
   it("shows — for a PR that was never reviewed", () => {
-    renderRow(pr({ score: null, severity_counts: null, latest_review_id: null, cost_usd: 0.01 }));
+    renderRow(pr({ score: null, severity_counts: null, review_ids: null, cost_usd: 0.01 }));
     expect(screen.getAllByText("—")).toHaveLength(2);
   });
 });

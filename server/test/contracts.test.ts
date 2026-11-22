@@ -251,7 +251,7 @@ describe('platform DTOs', () => {
     expect(PrMeta.parse({ ...pr, cost_usd: 0.014 }).cost_usd).toBe(0.014);
   });
 
-  it('PrMeta carries severity_counts + latest_review_id, null until reviewed', () => {
+  it('PrMeta carries severity_counts + review_ids, null until reviewed', () => {
     const pr = {
       number: 482,
       title: 't',
@@ -265,11 +265,11 @@ describe('platform DTOs', () => {
       status: 'needs_review',
     };
     const counts = { critical: 2, warning: 0, suggestion: 1 };
-    const reviewed = PrMeta.parse({ ...pr, severity_counts: counts, latest_review_id: 'rv1' });
+    const reviewed = PrMeta.parse({ ...pr, severity_counts: counts, review_ids: ['rv1', 'rv2'] });
     expect(reviewed.severity_counts).toEqual(counts);
-    expect(reviewed.latest_review_id).toBe('rv1');
+    expect(reviewed.review_ids).toEqual(['rv1', 'rv2']);
 
-    const unreviewed = PrMeta.parse({ ...pr, severity_counts: null, latest_review_id: null });
+    const unreviewed = PrMeta.parse({ ...pr, severity_counts: null, review_ids: null });
     expect(unreviewed.severity_counts).toBeNull();
     expect(() => PrMeta.parse({ ...pr, severity_counts: { critical: 1 } })).toThrow();
   });

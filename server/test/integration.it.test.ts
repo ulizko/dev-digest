@@ -179,7 +179,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     await app.close();
   });
 
-  it('PR list: severity_counts + latest_review_id from the latest review only', async () => {
+  it('PR list: score + severity_counts + review_ids from the latest review of each agent', async () => {
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const app = await buildApp({
       config,
@@ -200,13 +200,18 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
       .where(eq(t.pullRequests.id, reviewed.id));
 
     const at = (iso: string) => new Date(iso);
-    const [older, latest] = await pg.handle.db
+    const agentA = crypto.randomUUID();
+    const agentB = crypto.randomUUID();
+    const review = (prId: string, agentId: string | null, score: number, iso: string, kind: 'review' | 'summary' = 'review') =>
+      ({ workspaceId, prId, agentId, kind, score, createdAt: at(iso) });
+    const [olderA, latestA, latestB] = await pg.handle.db
       .insert(t.reviews)
       .values([
-        { workspaceId, prId: reviewed.id, kind: 'review', createdAt: at('2026-01-01T00:00:00Z') },
-        { workspaceId, prId: reviewed.id, kind: 'review', createdAt: at('2026-01-02T00:00:00Z') },
-        { workspaceId, prId: reviewed.id, kind: 'summary', createdAt: at('2026-01-03T00:00:00Z') },
-        { workspaceId, prId: clean.id, kind: 'review', createdAt: at('2026-01-02T00:00:00Z') },
+        review(reviewed.id, agentA, 90, '2026-01-01T00:00:00Z'),
+        review(reviewed.id, agentA, 80, '2026-01-02T00:00:00Z'),
+        review(reviewed.id, agentB, 55, '2026-01-01T12:00:00Z'),
+        review(reviewed.id, agentA, 10, '2026-01-03T00:00:00Z', 'summary'),
+        review(clean.id, null, 100, '2026-01-02T00:00:00Z'),
       ])
       .returning();
     const finding = (reviewId: string, severity: string, extra: Partial<typeof t.findings.$inferInsert> = {}) => ({
@@ -222,21 +227,24 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
       ...extra,
     });
     await pg.handle.db.insert(t.findings).values([
-      finding(older!.id, 'CRITICAL'),
-      finding(older!.id, 'CRITICAL'),
-      finding(latest!.id, 'CRITICAL', { kind: 'secret_leak' }),
-      finding(latest!.id, 'WARNING', { dismissedAt: new Date() }),
-      finding(latest!.id, 'WARNING'),
+      finding(olderA!.id, 'CRITICAL'),
+      finding(olderA!.id, 'CRITICAL'),
+      finding(latestA!.id, 'CRITICAL', { kind: 'secret_leak' }),
+      finding(latestA!.id, 'WARNING', { dismissedAt: new Date() }),
+      finding(latestA!.id, 'WARNING'),
+      finding(latestB!.id, 'SUGGESTION'),
     ]);
 
     const list = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
-    const reviewedRow = byNumber(list, 911) as Record<string, unknown>;
-    expect(reviewedRow.severity_counts).toEqual({ critical: 1, warning: 2, suggestion: 0 });
-    expect(reviewedRow.latest_review_id).toBe(latest!.id);
+    const reviewedRow = byNumber(list, 911) as { score: unknown; severity_counts: unknown; review_ids: string[] };
+    expect(reviewedRow.severity_counts).toEqual({ critical: 1, warning: 2, suggestion: 1 });
+    expect(reviewedRow.score).toBe(55);
+    expect([...reviewedRow.review_ids].sort()).toEqual([latestA!.id, latestB!.id].sort());
     expect(byNumber(list, 912)).toMatchObject({
+      score: 100,
       severity_counts: { critical: 0, warning: 0, suggestion: 0 },
     });
-    expect(byNumber(list, 913)).toMatchObject({ severity_counts: null, latest_review_id: null });
+    expect(byNumber(list, 913)).toMatchObject({ score: null, severity_counts: null, review_ids: null });
     await app.close();
   });
 
