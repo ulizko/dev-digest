@@ -9,6 +9,7 @@ import {
   IconBtn,
   Badge,
   SeverityBadge,
+  SeverityCount,
   CategoryTag,
   Chip,
   Avatar,
@@ -91,6 +92,10 @@ export function Gallery() {
         {SEVERITIES.map((sev) => (
           <SeverityBadge key={sev} severity={sev} count={3} />
         ))}
+        {SEVERITIES.map((sev) => (
+          <SeverityCount key={`count-${sev}`} severity={sev} count={2} />
+        ))}
+        <SeverityCount severity="CRITICAL" count={1} active onClick={() => {}} />
         <Badge icon="GitBranch">branch</Badge>
         <Badge dot color="var(--ok)" bg="transparent">
           synced
