@@ -10,18 +10,24 @@ import type { PrMeta } from "@/lib/types";
 import { SEVERITY_COUNT_KEYS, SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { formatCost } from "@/lib/format-cost";
+import { FindingsPopover } from "../FindingsPopover";
 import { s } from "../../styles";
 
-function FindingsCounts({ counts }: { counts: SeverityCounts | null | undefined }) {
+function FindingsCounts({ pr }: { pr: PrMeta }) {
+  const counts: SeverityCounts | null | undefined = pr.severity_counts;
   if (!counts) return <span style={s.muted}>—</span>;
   const present = SEVERITY_COUNT_KEYS.filter(([, key]) => counts[key] > 0);
   if (present.length === 0) return <span style={s.muted}>0</span>;
+  const badges = present.map(([sev, key]) => <SeverityCount key={sev} severity={sev} count={counts[key]} />);
+  if (!pr.id || !pr.review_ids) return <>{badges}</>;
   return (
-    <>
-      {present.map(([sev, key]) => (
-        <SeverityCount key={sev} severity={sev} count={counts[key]} />
-      ))}
-    </>
+    <FindingsPopover
+      prId={pr.id}
+      reviewIds={pr.review_ids}
+      count={present.reduce((sum, [, key]) => sum + counts[key], 0)}
+    >
+      {badges}
+    </FindingsPopover>
   );
 }
 
@@ -69,7 +75,7 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
         )}
       </div>
       <div style={s.findingsCell}>
-        <FindingsCounts counts={pr.severity_counts} />
+        <FindingsCounts pr={pr} />
       </div>
       <div>
         <Badge dot color={st.c} bg="transparent">

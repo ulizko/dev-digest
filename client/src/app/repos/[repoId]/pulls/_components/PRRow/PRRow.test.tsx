@@ -1,10 +1,13 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PrMeta } from "@devdigest/shared";
 import messages from "../../../../../../../messages/en/prReview.json";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/hooks/reviews", () => ({
+  usePrReviews: () => ({ data: undefined, isError: false, isFetching: false, refetch: vi.fn() }),
+}));
 
 import { PRRow } from "./PRRow";
 
@@ -52,10 +55,13 @@ describe("PRRow — COST column", () => {
 
 describe("PRRow — FINDINGS column", () => {
   it("shows a counter per non-empty severity of the latest review", () => {
-    renderRow(pr({ severity_counts: { critical: 2, warning: 0, suggestion: 4 } }));
+    renderRow(pr({ id: "pr-1", severity_counts: { critical: 2, warning: 0, suggestion: 4 } }));
     expect(screen.getByRole("img", { name: "2 CRITICAL" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "4 SUGGESTION" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /WARNING/ })).toBeNull();
+
+    fireEvent.focus(screen.getByRole("img", { name: "2 CRITICAL" }).parentElement!);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("6 findings");
   });
 
   it("shows 0 for a reviewed PR without findings", () => {
