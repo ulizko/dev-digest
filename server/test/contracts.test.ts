@@ -250,4 +250,27 @@ describe('platform DTOs', () => {
     };
     expect(PrMeta.parse({ ...pr, cost_usd: 0.014 }).cost_usd).toBe(0.014);
   });
+
+  it('PrMeta carries severity_counts + latest_review_id, null until reviewed', () => {
+    const pr = {
+      number: 482,
+      title: 't',
+      author: 'a',
+      branch: 'b',
+      base: 'main',
+      head_sha: 'sha',
+      additions: 1,
+      deletions: 0,
+      files_count: 1,
+      status: 'needs_review',
+    };
+    const counts = { critical: 2, warning: 0, suggestion: 1 };
+    const reviewed = PrMeta.parse({ ...pr, severity_counts: counts, latest_review_id: 'rv1' });
+    expect(reviewed.severity_counts).toEqual(counts);
+    expect(reviewed.latest_review_id).toBe('rv1');
+
+    const unreviewed = PrMeta.parse({ ...pr, severity_counts: null, latest_review_id: null });
+    expect(unreviewed.severity_counts).toBeNull();
+    expect(() => PrMeta.parse({ ...pr, severity_counts: { critical: 1 } })).toThrow();
+  });
 });

@@ -8,6 +8,19 @@ import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 
+const pr = (number: number) => ({
+  number,
+  title: `PR ${number}`,
+  author: 'a',
+  branch: `b${number}`,
+  base: 'main',
+  head_sha: `sha${number}`,
+  additions: 1,
+  deletions: 0,
+  files_count: 1,
+  status: 'open' as const,
+});
+
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
@@ -132,18 +145,6 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
   });
 
   it('PR list: cost_usd = sum of run costs, null when none known', async () => {
-    const pr = (number: number) => ({
-      number,
-      title: `PR ${number}`,
-      author: 'a',
-      branch: `b${number}`,
-      base: 'main',
-      head_sha: `sha${number}`,
-      additions: 1,
-      deletions: 0,
-      files_count: 1,
-      status: 'open' as const,
-    });
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const app = await buildApp({
       config,
@@ -175,6 +176,67 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     expect(typeof paidRow.cost_usd).toBe('number');
     expect(paidRow.cost_usd).toBeCloseTo(0.0033, 10);
     expect(unpaidRow.cost_usd).toBeNull();
+    await app.close();
+  });
+
+  it('PR list: severity_counts + latest_review_id from the latest review only', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: {
+        git: new MockGitClient(),
+        github: new MockGitHubClient({ pulls: [pr(911), pr(912), pr(913)] }),
+      },
+    });
+    const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
+    const imported = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const byNumber = (rows: { number: number }[], n: number) => rows.find((p) => p.number === n)!;
+    const reviewed = byNumber(imported, 911) as { id: string };
+    const clean = byNumber(imported, 912) as { id: string };
+    const [{ workspaceId }] = await pg.handle.db
+      .select({ workspaceId: t.pullRequests.workspaceId })
+      .from(t.pullRequests)
+      .where(eq(t.pullRequests.id, reviewed.id));
+
+    const at = (iso: string) => new Date(iso);
+    const [older, latest] = await pg.handle.db
+      .insert(t.reviews)
+      .values([
+        { workspaceId, prId: reviewed.id, kind: 'review', createdAt: at('2026-01-01T00:00:00Z') },
+        { workspaceId, prId: reviewed.id, kind: 'review', createdAt: at('2026-01-02T00:00:00Z') },
+        { workspaceId, prId: reviewed.id, kind: 'summary', createdAt: at('2026-01-03T00:00:00Z') },
+        { workspaceId, prId: clean.id, kind: 'review', createdAt: at('2026-01-02T00:00:00Z') },
+      ])
+      .returning();
+    const finding = (reviewId: string, severity: string, extra: Partial<typeof t.findings.$inferInsert> = {}) => ({
+      reviewId,
+      severity,
+      file: 'a.ts',
+      startLine: 1,
+      endLine: 1,
+      category: 'bug',
+      title: 'x',
+      rationale: 'y',
+      confidence: 0.9,
+      ...extra,
+    });
+    await pg.handle.db.insert(t.findings).values([
+      finding(older!.id, 'CRITICAL'),
+      finding(older!.id, 'CRITICAL'),
+      finding(latest!.id, 'CRITICAL', { kind: 'secret_leak' }),
+      finding(latest!.id, 'WARNING', { dismissedAt: new Date() }),
+      finding(latest!.id, 'WARNING'),
+    ]);
+
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const reviewedRow = byNumber(list, 911) as Record<string, unknown>;
+    expect(reviewedRow.severity_counts).toEqual({ critical: 1, warning: 2, suggestion: 0 });
+    expect(reviewedRow.latest_review_id).toBe(latest!.id);
+    expect(byNumber(list, 912)).toMatchObject({
+      severity_counts: { critical: 0, warning: 0, suggestion: 0 },
+    });
+    expect(byNumber(list, 913)).toMatchObject({ severity_counts: null, latest_review_id: null });
     await app.close();
   });
 

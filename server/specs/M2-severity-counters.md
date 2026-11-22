@@ -1,0 +1,287 @@
+# M2 — Severity counters: run filter + PR list FINDINGS column
+
+Status: accepted
+
+Фіча зачіпає і сервер, і клієнт. Spec лежить у `server/`, як і M1: сервер
+володіє даними й канонічними Zod-контрактами.
+
+## Навіщо
+
+Користувач має бачити, скільки знахідок кожного рівня severity у PR, у двох
+місцях:
+
+- **у списку PR**, щоб без переходу в PR розуміти, де є CRITICAL;
+- **у розгорнутому прогоні** на вкладці Agent runs, щоб одним кліком лишити
+  тільки потрібний рівень і не гортати решту.
+
+Макет: `Pull Requests · Run Review + auto-status`, колонка FINDINGS і попап.
+
+## Цілі
+
+Як користувач я можу:
+
+1. Відкрити PR, перейти на вкладку **Agent runs**, розгорнути прогін і побачити
+   над списком знахідок лічильники за severity: іконка рівня й число.
+2. Клікнути по рівню і побачити в списку цього прогону тільки знахідки цього
+   рівня.
+3. Зняти фільтр і повернутися до повного списку.
+4. У **списку PR** (`/repos/:repoId/pulls`) побачити колонку **FINDINGS** між
+   SCORE і STATUS: за кожним рівнем з ненульовою кількістю іконка й число
+   кольором рівня, з пунктирним підкресленням. Приклад: `⊘2 ⚠2 💡2`.
+5. Навести курсор (або сфокусуватися з клавіатури) на клітинку FINDINGS і
+   побачити попап зі знахідками з макета.
+
+## Критерії приймання
+
+Прогін (Agent runs):
+
+- У розгорнутому прогоні видно лічильники за трьома рівнями severity. Кожен
+  лічильник показує іконку й число, а повна форма `3 CRITICAL` доступна як
+  `aria-label` і tooltip (`title`).
+- Числа збігаються з кількістю знахідок кожного рівня у списку цього прогону.
+- Клік по рівню лишає у списку тільки знахідки цього рівня.
+- Фільтр можна зняти й повернутися до повного списку.
+
+Список PR:
+
+- Числа в колонці FINDINGS дорівнюють кількості знахідок кожного рівня в
+  **останньому рев'ю PR**, тобто в тому самому рев'ю, з якого береться SCORE.
+- Рівні з нулем у колонці не показуються. PR без рев'ю показує `—`, попапа в
+  нього немає. PR з рев'ю без знахідок показує `0`.
+- Попап показує знахідки саме того рев'ю, яке порахувала колонка (за
+  `latest_review_id`): заголовок `N FINDINGS`, далі список, відсортований за
+  severity.
+- Ендпоінт списку додає рівно один SQL-запит на всю відповідь, без N+1.
+
+## Не-цілі
+
+- Мультивибір рівнів у фільтрі прогону.
+- Збереження фільтра в URL (`?severity=`) або між розгортаннями прогону.
+- Фільтр і сортування списку PR за severity.
+- Клік по знахідці в попапі з переходом до неї. Клік по рядку, як і зараз,
+  відкриває PR.
+- Сума за всіма агентами раунду: колонка, як і SCORE, бере тільки останнє рев'ю.
+- Рівень `INFO`: його немає в контракті `Severity`.
+- Кнопка «Run Review» у рядку списку з макета (так само, як у M1).
+- Наявні a11y-борги, які фіча не погіршує (див. «Відомі межі»).
+- e2e-флоу в `e2e/`.
+
+## Як працює зараз
+
+- **Прогін:** `page.tsx`, вкладка `findings` («Agent runs») → `FindingsTab` →
+  `ReviewRunAccordion`. Розгорнутий акордеон рендерить `FindingsPanel` (інших
+  споживачів немає). Там є перемикач «Hide low confidence»,
+  `visibleFindings(findings, hideLow)` і j/k/a/d через `focusIdx`. Тіло
+  акордеона монтується лише коли прогін розгорнутий.
+- **Список PR:** `GET /repos/:id/pulls` (`server/src/modules/pulls/routes.ts`)
+  повертає всі PR репозиторію без пагінації. SCORE береться з останнього
+  рев'ю (`reviews.kind = 'review'`, `ORDER BY created_at DESC` без
+  tie-break). Коментар у роуті каже, що розбивку FINDINGS у список свідомо
+  не віддають. Ця фіча скасовує те рішення.
+- `server/src/modules/pulls/status.ts` уже має `SeverityCounts`
+  (`{ critical, warning, suggestion }`) і протестований
+  `rollupSeverities(rows)`, написані якраз для колонки FINDINGS. Роут їх поки
+  не використовує.
+- `PrMeta` не має полів severity. Клієнт: `PRRow` (рядок — клікабельний `div`
+  з `router.push`), `GRID`/`COLUMN_KEYS` у `pulls/constants.ts`.
+- `tableCard` списку має `overflow: hidden`, тож попап, вкладений у рядок, на
+  нижніх рядках обрізався б.
+- `usePrReviews(prId)` тягне `ReviewRecord[]` із findings
+  (`GET /pulls/:id/reviews`) і вимикається при `prId = null`.
+- `FindingKind` має п'ять значень: `finding`, `secret_leak`,
+  `lethal_trifecta`, `phantom`, `hook`. `FindingsPanel` показує всі.
+- У `@devdigest/ui` є `SEV` і `SeverityBadge`. Примітива «іконка + число» та
+  popover немає. Кожен новий примітив треба додати в `/showcase`
+  (`src/components/showcase/Showcase.tsx`), інакше впаде smoke-тест.
+
+## Дизайн
+
+### Контракти (`server/src/vendor/shared/contracts`, потім копія в client)
+
+- `findings.ts`:
+  `SeverityCounts = z.object({ critical: int, warning: int, suggestion: int })`.
+  Ключі такі самі, як у наявному інтерфейсі.
+- `platform.ts` → `PrMeta` (поля лише в list-ендпоінті, як `score`):
+  - `severity_counts: SeverityCounts.nullish()`; `null` означає, що PR ще не мав
+    рев'ю;
+  - `latest_review_id: z.string().nullish()`, рев'ю, з якого взято SCORE і
+    лічильники.
+- `status.ts` видаляє свій `interface SeverityCounts` і імпортує тип із
+  `@devdigest/shared`, щоб лишилася одна форма.
+- Після правки: `cp -R server/src/vendor/shared/. client/src/vendor/shared/`,
+  `diff -r` має бути порожнім.
+
+### Сервер (`pulls/routes.ts`)
+
+- Запит останнього рев'ю бере ще й `reviews.id` і отримує детермінований
+  порядок `ORDER BY created_at DESC, id DESC`.
+- Один додатковий запит на відповідь:
+  `SELECT review_id, severity FROM findings WHERE review_id IN (<latest ids>)`.
+  Групування робиться в JS через наявний `rollupSeverities`. Ручний `count()`
+  не потрібен, тож пастки з типом bigint/string теж немає.
+- Міграція `0011`: індекс `findings_review_id_idx` на `findings(review_id)`.
+  FK у Postgres індексу не створює, а список оновлюється щохвилини, тож без
+  індексу кожне оновлення робило б seq scan по всіх знахідках (так само, як
+  `agent_runs_pr_id_idx` у M1).
+- Рахуються всі п'ять `kind` і dismissed-знахідки, як у списку прогону.
+- PR без рев'ю отримує `severity_counts: null` і `latest_review_id: null`.
+- Застарілий коментар про те, що FINDINGS свідомо не віддаються, видаляється.
+
+### Клієнт
+
+**`SeverityCount` у `@devdigest/ui`** (`primitives/Badge.tsx`, поруч із
+`SeverityBadge`). Його використовують два екрани; додати в барел, README і
+`/showcase`.
+
+- Пропси: `severity`, `count`, `active?`, `onClick?`.
+- З `onClick` рендериться `<button type="button" aria-pressed={active}>`, без
+  нього `<span>`.
+- Вигляд: іконка `SEV[sev].icon` і число кольором `SEV[sev].c`, пунктирне
+  підкреслення. Активний стан має фон `SEV[sev].bg`.
+- `aria-label` і `title` мають вигляд `"{count} {SEVERITY}"`.
+
+**Прогін, `FindingsPanel`:**
+
+- Стан: `severity: Severity | null`.
+- `visible = visibleFindings(findings, hideLow)`. Лічильники рахуються з
+  `visible`, тобто **після** «Hide low confidence», щоб числа збігалися зі
+  списком.
+- `shown = severity ? visible.filter(…) : visible`.
+- Зміна severity-фільтра **або** «Hide low confidence» скидає `focusIdx` на 0.
+  Зараз індекс може вийти за межі списку, і фільтр зробив би це частішим.
+- Ліворуч у тулбарі стоять три `SeverityCount` з `onClick`, у порядку
+  CRITICAL → WARNING → SUGGESTION, **включно з нулями**: критерій вимагає три
+  рівні. Група має `role="group"` і `aria-label="Filter by severity"`.
+- Повторний клік по активному рівню знімає фільтр. Поки фільтр увімкнений,
+  поруч видно кнопку **Show all**.
+- Рівень з нулем теж клікабельний і показує наявний `EmptyState`.
+
+**Список PR, `PRRow`:**
+
+- Нова колонка FINDINGS (~110px) між SCORE і STATUS: `GRID`, `COLUMN_KEYS`,
+  i18n `prReview.list.columns.findings = "Findings"`. Місце бере на себе
+  колонка `1fr` із назвою PR, яка вже обрізається з `ellipsis`.
+- Клітинка показує `SeverityCount` без `onClick` для кожного рівня з
+  `count > 0`. Якщо `severity_counts == null`, показується `—`.
+- `FindingsPopover` — локальний компонент у `pulls/_components/FindingsPopover/`,
+  бо в нього один споживач.
+  - **Тригер:** клітинка з `tabIndex=0` і
+    `aria-describedby` → попап `role="tooltip"`. Вміст неінтерактивний.
+  - **Відкриття:** `mouseenter` із затримкою 250 мс, щоб випадковий прохід
+    курсором не робив fetch, або `focus`.
+  - **Закриття:** коли курсор пішов і з клітинки, і з самого попапа (через
+    невелику затримку, щоб курсор встиг перейти в попап), а також на `blur`,
+    `Escape`, `resize` і `scroll` (capture).
+  - **Дані:** `usePrReviews(open ? pr.id : null)` і рев'ю з
+    `id === pr.latest_review_id`. Якщо в даних його ще немає (кеш старіший за
+    список), робиться `refetch` і показується «Loading…».
+  - **Позиція:** рендер через `createPortal` у `document.body` з
+    `position: fixed` за `getBoundingClientRect()` клітинки, бо `tableCard`
+    обрізає вкладений попап. Попап стає під клітинкою, а якщо не влазить по
+    висоті вікна, то над нею. По горизонталі він притискається до меж вікна.
+    Без Floating UI: нова залежність заради одного попапа не потрібна.
+  - **Вміст** за макетом:
+    - заголовок `{n} FINDINGS`;
+    - для кожної знахідки: `SeverityBadge compact`, title, категорія (`CAT`),
+      `file:start-end` моно-шрифтом, крапка й `NN% conf`, rationale,
+      обрізаний до 2 рядків.
+  - **Стани:** «Loading…» і повідомлення при помилці; i18n у
+    `prReview.list.findingsPopover.*`.
+  - Клік по клітинці, як і раніше, спливає до рядка й відкриває PR.
+
+**i18n (`messages/en/prReview.json`):**
+
+- `panel.showAll = "Show all"`
+- `panel.severityFilter = "Filter by severity"`
+- `list.columns.findings = "Findings"`
+- `list.findingsPopover.title = "{count} findings"`
+- `list.findingsPopover.loading`
+- `list.findingsPopover.error`
+
+## Підходи (розглянуті)
+
+- **Сервер повертає лічильники й `latest_review_id`, а попап ліниво тягне
+  наявний `GET /pulls/:id/reviews`** (обрано). Список лишається легким, нового
+  ендпоінта немає, а попап прив'язаний саме до того рев'ю, яке порахувала
+  колонка.
+- Новий ендпоінт preview для одного рев'ю. Він дешевший за `reviewsForPull`
+  (той ще й шукає імена агентів), але це новий роут заради попапа. Варто
+  повернутися до нього, якщо hover-fetch стане помітно повільним.
+- Вбудувати знахідки в `GET /pulls`. Відповідь роздувається на кожен PR.
+- Рахувати лічильники на клієнті через `usePrReviews` для кожного рядка.
+  Це N+1.
+- SQL `count(*) GROUP BY`. Він повертає bigint як string, а
+  `rollupSeverities` у JS уже є й протестований.
+- Попап без порталу. Його обріже `overflow: hidden` у `tableCard`.
+- Floating UI. Це нова залежність для одного попапа; ручного flip і clamp
+  вистачає.
+
+## Відомі межі
+
+- Якщо запустити «Run all enabled agents», колонка покаже знахідки лише
+  останнього агента. Це та сама межа, що в SCORE.
+- Лічильники в списку оновлюються разом зі списком (`refetchInterval` 60 с),
+  як і SCORE. Інвалідації `["pulls"]` після рев'ю немає ні для SCORE, ні тут.
+  Якщо потрібно, це окрема задача.
+- Рядок списку PR — клікабельний `div` без клавіатурної навігації, а заголовок
+  `ReviewRunAccordion` — `role="button"` із вкладеною кнопкою видалення. Обидва
+  борги існували до фічі, вона їх не погіршує. Якщо потрібно, це окремі задачі.
+- Перше наведення на клітинку чекає на fetch (видно «Loading…»).
+- `PrMeta.id` у контракті `nullish`, хоча list-ендпоінт завжди його повертає.
+  Без `id` попап просто не відкривається.
+
+## Тести
+
+- **server:**
+  - `contracts.test.ts`: `PrMeta` з `severity_counts` і `latest_review_id`, та з
+    `null`.
+  - `pulls` it-test:
+    - числа для PR з рев'ю, у тому числі з dismissed і не-`finding` kind;
+    - рахується лише останнє рев'ю, а не сума з попереднім;
+    - новіше `summary`-рев'ю ігнорується;
+    - рев'ю без знахідок дає нулі, а PR без рев'ю дає `null`;
+    - `latest_review_id` вказує на те саме рев'ю;
+    - значення мають тип `number`.
+  - `pulls-status.test.ts` лишається без змін, бо форма `SeverityCounts` та сама.
+- **client:**
+  - `FindingsPanel.test.tsx`:
+    - три лічильники, включно з нулем (за `aria-label`);
+    - клік фільтрує й ставить `aria-pressed`;
+    - повторний клік і **Show all** знімають фільтр;
+    - з «Hide low confidence» лічильник зменшується разом зі списком.
+  - `PRRow.test.tsx`: нулі сховані, `null` дає `—`.
+  - `FindingsPopover.test.tsx`:
+    - показуються знахідки рев'ю з `latest_review_id`, а не просто найновішого
+      в кеші;
+    - заголовок `N findings`;
+    - стани loading і error;
+    - `Escape` закриває попап;
+    - `focus` відкриває попап, `aria-describedby` вказує на нього.
+  - `SeverityCount`: `button` з `onClick` і `span` без нього; `aria-label`.
+    Showcase smoke-тест проходить.
+
+## Рішення, прийняті мною (перевірте)
+
+- Колонка рахує останнє рев'ю, а не всі рев'ю PR, щоб збігатися з SCORE поруч.
+  Альтернатива: усі рев'ю, як лічильник на табі Agent runs.
+- Dismissed-знахідки й усі п'ять `kind` рахуються і в прогоні, і в списку.
+- У прогоні показуються всі три рівні (з нулями), у списку нулі ховаються (за
+  макетом).
+- Обрано формат «іконка + число». Текст `3 CRITICAL` з критеріїв лишається
+  в `aria-label`/`title`.
+- `SeverityCount` іде в `@devdigest/ui` (два споживачі, плюс showcase), а
+  `FindingsPopover` лишається локальним (один споживач).
+- Spec перенесено з `client/specs/` у `server/specs/`, бо фіча стала
+  крос-пакетною.
+- Від critic (Codex `gpt-5.6-sol`) **не** прийнято:
+  - окремий list-DTO з обов'язковим `id` (зайва форма контракту);
+  - перебудову рядка навколо `<a>` і заголовка акордеона (наявні борги, поза
+    скоупом);
+  - Floating UI;
+  - інвалідацію `["pulls"]` (та сама межа, що в SCORE).
+- Реалізація по кроках з окремим комітом на кожен:
+  1. контракт + сервер;
+  2. `SeverityCount` + showcase;
+  3. фільтр у прогоні;
+  4. колонка FINDINGS;
+  5. попап.
