@@ -209,6 +209,12 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
 
+    expect(run!.costUsd).toBeGreaterThan(0);
+    expect(trace.stats.cost_usd).toBe(run!.costUsd);
+    expect(trace.log.some((l: { msg: string }) => l.msg.startsWith('cost $'))).toBe(true);
+    const runs = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/runs` })).json();
+    expect(runs[0].cost_usd).toBe(run!.costUsd);
+
     await app.close();
   });
 

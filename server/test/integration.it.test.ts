@@ -8,6 +8,19 @@ import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 
+const pr = (number: number) => ({
+  number,
+  title: `PR ${number}`,
+  author: 'a',
+  branch: `b${number}`,
+  base: 'main',
+  head_sha: `sha${number}`,
+  additions: 1,
+  deletions: 0,
+  files_count: 1,
+  status: 'open' as const,
+});
+
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
@@ -128,6 +141,110 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     // import again → still idempotent (unique repo_id+number)
     const second = await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` });
     expect(second.json().length).toBe(first.json().length);
+    await app.close();
+  });
+
+  it('PR list: cost_usd = sum of run costs, null when none known', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: {
+        git: new MockGitClient(),
+        github: new MockGitHubClient({ pulls: [pr(901), pr(902)] }),
+      },
+    });
+    const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
+    const imported = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const paid = imported.find((p: { number: number }) => p.number === 901)!;
+    const unpaid = imported.find((p: { number: number }) => p.number === 902)!;
+    const [{ workspaceId }] = await pg.handle.db
+      .select({ workspaceId: t.pullRequests.workspaceId })
+      .from(t.pullRequests)
+      .where(eq(t.pullRequests.id, paid.id));
+
+    await pg.handle.db.insert(t.agentRuns).values([
+      { workspaceId, prId: paid.id, status: 'done', costUsd: 0.001 },
+      { workspaceId, prId: paid.id, status: 'done', costUsd: 0.0023 },
+      { workspaceId, prId: paid.id, status: 'failed', costUsd: null },
+      { workspaceId, prId: unpaid.id, status: 'failed', costUsd: null },
+    ]);
+
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const paidRow = list.find((p: { number: number }) => p.number === 901)!;
+    const unpaidRow = list.find((p: { number: number }) => p.number === 902)!;
+    expect(typeof paidRow.cost_usd).toBe('number');
+    expect(paidRow.cost_usd).toBeCloseTo(0.0033, 10);
+    expect(unpaidRow.cost_usd).toBeNull();
+    await app.close();
+  });
+
+  it('PR list: score + severity_counts + review_ids from the latest review of each agent', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: {
+        git: new MockGitClient(),
+        github: new MockGitHubClient({ pulls: [pr(911), pr(912), pr(913)] }),
+      },
+    });
+    const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
+    const imported = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const byNumber = (rows: { number: number }[], n: number) => rows.find((p) => p.number === n)!;
+    const reviewed = byNumber(imported, 911) as { id: string };
+    const clean = byNumber(imported, 912) as { id: string };
+    const [{ workspaceId }] = await pg.handle.db
+      .select({ workspaceId: t.pullRequests.workspaceId })
+      .from(t.pullRequests)
+      .where(eq(t.pullRequests.id, reviewed.id));
+
+    const at = (iso: string) => new Date(iso);
+    const agentA = crypto.randomUUID();
+    const agentB = crypto.randomUUID();
+    const review = (prId: string, agentId: string | null, score: number, iso: string, kind: 'review' | 'summary' = 'review') =>
+      ({ workspaceId, prId, agentId, kind, score, createdAt: at(iso) });
+    const [olderA, latestA, latestB] = await pg.handle.db
+      .insert(t.reviews)
+      .values([
+        review(reviewed.id, agentA, 90, '2026-01-01T00:00:00Z'),
+        review(reviewed.id, agentA, 80, '2026-01-02T00:00:00Z'),
+        review(reviewed.id, agentB, 55, '2026-01-01T12:00:00Z'),
+        review(reviewed.id, agentA, 10, '2026-01-03T00:00:00Z', 'summary'),
+        review(clean.id, null, 100, '2026-01-02T00:00:00Z'),
+      ])
+      .returning();
+    const finding = (reviewId: string, severity: string, extra: Partial<typeof t.findings.$inferInsert> = {}) => ({
+      reviewId,
+      severity,
+      file: 'a.ts',
+      startLine: 1,
+      endLine: 1,
+      category: 'bug',
+      title: 'x',
+      rationale: 'y',
+      confidence: 0.9,
+      ...extra,
+    });
+    await pg.handle.db.insert(t.findings).values([
+      finding(olderA!.id, 'CRITICAL'),
+      finding(olderA!.id, 'CRITICAL'),
+      finding(latestA!.id, 'CRITICAL', { kind: 'secret_leak' }),
+      finding(latestA!.id, 'WARNING', { dismissedAt: new Date() }),
+      finding(latestA!.id, 'WARNING'),
+      finding(latestB!.id, 'SUGGESTION'),
+    ]);
+
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` })).json();
+    const reviewedRow = byNumber(list, 911) as { score: unknown; severity_counts: unknown; review_ids: string[] };
+    expect(reviewedRow.severity_counts).toEqual({ critical: 1, warning: 2, suggestion: 1 });
+    expect(reviewedRow.score).toBe(55);
+    expect([...reviewedRow.review_ids].sort()).toEqual([latestA!.id, latestB!.id].sort());
+    expect(byNumber(list, 912)).toMatchObject({
+      score: 100,
+      severity_counts: { critical: 0, warning: 0, suggestion: 0 },
+    });
+    expect(byNumber(list, 913)).toMatchObject({ score: null, severity_counts: null, review_ids: null });
     await app.close();
   });
 

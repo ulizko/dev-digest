@@ -2,7 +2,7 @@ export type { Severity, Category, ButtonProps } from "./tokens";
 export { SEV, CAT } from "./tokens";
 export { Button } from "./Button";
 export { IconBtn } from "./IconBtn";
-export { Badge, SeverityBadge, CategoryTag } from "./Badge";
+export { Badge, SeverityBadge, SeverityCount, CategoryTag } from "./Badge";
 export { Chip } from "./Chip";
 export { Avatar } from "./Avatar";
 export { ConfidenceNum } from "./ConfidenceNum";

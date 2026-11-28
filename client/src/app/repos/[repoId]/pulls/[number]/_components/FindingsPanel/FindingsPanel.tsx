@@ -4,11 +4,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import { Toggle, EmptyState, SeverityCount } from "@devdigest/ui";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { KEY_TO_ACTION } from "./constants";
+import { KEY_TO_ACTION, SEVERITIES, SEVERITY_KEY } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
 
@@ -26,9 +26,19 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
+  const [severity, setSeverity] = React.useState<Severity | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const visible = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const shown = React.useMemo(
+    () => (severity ? visible.filter((f) => f.severity === severity) : visible),
+    [visible, severity],
+  );
+  const countOf = (sev: Severity) => visible.filter((f) => f.severity === sev).length;
+  const filterBy = (sev: Severity | null) => {
+    setSeverity(sev);
+    setFocusIdx(0);
+  };
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -48,9 +58,34 @@ export function FindingsPanel({
   return (
     <div>
       <div style={s.toolbar}>
+        <div role="group" aria-label={t("panel.severityFilter")} style={s.severityGroup}>
+          {SEVERITIES.map((sev) => (
+            <SeverityCount
+              key={sev}
+              severity={sev}
+              count={countOf(sev)}
+              label={t(`severityCount.${SEVERITY_KEY[sev]}`, { count: countOf(sev) })}
+              active={severity === sev}
+              dimmed={severity !== null && severity !== sev}
+              onClick={() => filterBy(severity === sev ? null : sev)}
+            />
+          ))}
+          {severity && (
+            <button type="button" onClick={() => filterBy(null)} style={s.showAll}>
+              {t("panel.showAll")}
+            </button>
+          )}
+        </div>
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}
-          <Toggle on={hideLow} onChange={setHideLow} size={16} />
+          <Toggle
+            on={hideLow}
+            onChange={(on) => {
+              setHideLow(on);
+              setFocusIdx(0);
+            }}
+            size={16}
+          />
         </div>
       </div>
 

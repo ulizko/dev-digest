@@ -87,6 +87,57 @@ export function SeverityBadge({
   );
 }
 
+/** Compact severity tally — icon + number; the caller's localized `label` ("3 CRITICAL") is the aria-label/title. */
+export function SeverityCount({
+  severity,
+  count,
+  label,
+  active,
+  dimmed,
+  onClick,
+}: {
+  severity: Severity;
+  count: number;
+  label: string;
+  active?: boolean;
+  dimmed?: boolean;
+  onClick?: () => void;
+}) {
+  const s = SEV[severity];
+  const I = Icon[s.icon];
+  const style: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "2px 5px",
+    border: "none",
+    borderBottom: "1px dotted currentColor",
+    borderRadius: 4,
+    background: active ? s.bg : "transparent",
+    color: s.c,
+    opacity: dimmed ? 0.4 : 1,
+    font: "inherit",
+    fontSize: 12.5,
+    fontWeight: 600,
+    cursor: onClick ? "pointer" : "inherit",
+  };
+  const content = (
+    <>
+      <I size={13} aria-hidden />
+      <span className="tnum">{count}</span>
+    </>
+  );
+  return onClick ? (
+    <button type="button" aria-label={label} title={label} aria-pressed={!!active} onClick={onClick} style={style}>
+      {content}
+    </button>
+  ) : (
+    <span role="img" aria-label={label} title={label} style={style}>
+      {content}
+    </span>
+  );
+}
+
 export function CategoryTag({ category }: { category: Category }) {
   const c = CAT[category];
   if (!c) return null;

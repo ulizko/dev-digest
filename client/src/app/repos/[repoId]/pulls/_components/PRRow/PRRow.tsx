@@ -4,11 +4,44 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
+import { Icon, Avatar, Badge, CircularScore, SeverityCount } from "@devdigest/ui";
+import type { SeverityCounts } from "@devdigest/shared";
 import type { PrMeta } from "@/lib/types";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
+import { SEVERITIES, SEVERITY_KEY } from "../../[number]/_components/FindingsPanel/constants";
 import { relativeTime, sizeOf } from "../../helpers";
+import { formatCost } from "@/lib/format-cost";
+import { FindingsPopover } from "../FindingsPopover";
 import { s } from "../../styles";
+
+function FindingsCounts({ pr }: { pr: PrMeta }) {
+  const t = useTranslations("prReview");
+  const counts: SeverityCounts | null | undefined = pr.severity_counts;
+  if (!counts) return <span style={s.muted}>—</span>;
+  const present = SEVERITIES.filter((sev) => counts[SEVERITY_KEY[sev]] > 0);
+  if (present.length === 0) return <span style={s.muted}>0</span>;
+  const badges = present.map((sev) => {
+    const count = counts[SEVERITY_KEY[sev]];
+    return (
+      <SeverityCount
+        key={sev}
+        severity={sev}
+        count={count}
+        label={t(`severityCount.${SEVERITY_KEY[sev]}`, { count })}
+      />
+    );
+  });
+  if (!pr.id || !pr.review_ids) return <>{badges}</>;
+  return (
+    <FindingsPopover
+      prId={pr.id}
+      reviewIds={pr.review_ids}
+      count={present.reduce((sum, sev) => sum + counts[SEVERITY_KEY[sev]], 0)}
+    >
+      {badges}
+    </FindingsPopover>
+  );
+}
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const t = useTranslations("prReview");
@@ -53,10 +86,16 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           <span style={s.muted}>—</span>
         )}
       </div>
+      <div style={s.findingsCell}>
+        <FindingsCounts pr={pr} />
+      </div>
       <div>
         <Badge dot color={st.c} bg="transparent">
           {t(`list.status.${st.labelKey}`)}
         </Badge>
+      </div>
+      <div className="mono" style={s.muted}>
+        {formatCost(pr.cost_usd)}
       </div>
       <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
     </div>
